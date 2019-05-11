@@ -1,6 +1,6 @@
 package filechooser;
 
-public class AreaObserver {
+public class Controller {
     ViewMode currentView;
 
 
