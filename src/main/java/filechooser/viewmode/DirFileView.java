@@ -1,78 +1,139 @@
 package filechooser.viewmode;
 
-import filechooser.ViewMode;
+import filechooser.Controller;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.widgets.*;
 
 import java.io.File;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
 public class DirFileView implements ViewMode {
 
-    Image dirImage;
-    final String dirImageName = "dir.png";
-    Image fileImage;
-    final String fileImageName = "file.png";
-    final int DEFAULT_COL_NUM = 4;
+    private Image dirImage;
+    private final String dirImageName = "dir.png";
+    private Image fileImage;
+    private final String fileImageName = "file.png";
+    private Image lvlUpImage;
+    private final String lvlUpImageName = "lvlup.png";
+    private final int DEFAULT_COL_NUM = 4;
 
-    Group group;
-    Table table;
-    String currentDir = "";
+    private Table table;
+    private String currentDir;
+    private String currentExtension;
+    private Controller controller;
 
-    public DirFileView(Composite composite, String dirPath) {
-        group = new Group(composite, SWT.NONE);
-        table = new Table(group, SWT.MULTI | SWT.FULL_SELECTION);
+    public DirFileView(Composite composite, Controller controller) {
+        this.controller = controller;
+        this.currentDir = controller.getCurrentDir();
+        this.currentExtension = controller.getCurrentExtension();
+        table = new Table(composite, SWT.MULTI | SWT.FULL_SELECTION | SWT.V_SCROLL | SWT.H_SCROLL);
         for (int i = 0; i < DEFAULT_COL_NUM; i++) {
-            TableColumn tableColumn = new TableColumn(table, SWT.NONE);
+            new TableColumn(table, SWT.V_SCROLL);
         }
-        currentDir = dirPath;
+        table.addListener(SWT.MouseDown, new Listener() {
+            public void handleEvent(Event event) {
+                Point p = new Point(event.x, event.y);
+                TableItem item = table.getItem(p);
+                if (item == null) {
+                    return;
+                }
+                int columnCount = table.getColumnCount();
+                for (int i = 0; i < columnCount; i++) {
+                    Rectangle rectangle = item.getBounds(i);
+                    if (rectangle.contains(p)) {
+                        String fileName = item.getText(i);
+                        String path = (String) item.getData(fileName);
+                        if (path == null) {
+                            return;
+                        }
+                        File file = new File(path);
+                        if (file.isDirectory()) {
+                            currentDir = path;
+                        }
+                    }
+                }
+                updateContent();
+            }
+        });
         initImages();
+        updateContent();
+
+    }
+
+    private void updateContent() {
+        table.removeAll();
         File dir = new File(currentDir);
         File[] files = dir.listFiles();
-        List<File> fileList = Arrays.asList(files);
-        Iterator<File> itr = fileList.iterator();
 
-        while (itr.hasNext()) {
-            TableItem item = new TableItem(table, SWT.NONE);
-            for (int i = 0; i < DEFAULT_COL_NUM; i++) {
-                if (itr.hasNext()) {
-                    File file = itr.next();
-                    String fileName = file.getName();
-                    Image img;
-                    if(file.isDirectory()){
-                        img = dirImage;
-                    } else {
-                        img = fileImage;
-                    }
-                    item.setImage(i, img);
-                    item.setText(i, fileName);
+        List<File> filesToAdd = new ArrayList<>();
+        if(files != null) {
+            for (File file : files) {
+                if (file.isDirectory() ||
+                        file.getName().endsWith(currentExtension)) {
+                    filesToAdd.add(file);
                 }
             }
+        }
 
+        Iterator<File> itr = filesToAdd.iterator();
+        TableItem item = new TableItem(table, SWT.NONE);
+        File parentFile = new File(currentDir).getParentFile();
+        if(parentFile!= null){
+            item.setText(0, "Up");
+            item.setImage(0, lvlUpImage);
+            item.setData("Up", parentFile.getAbsolutePath());
+        };
+        while(itr.hasNext()) {
+            for (int j = 0; j < DEFAULT_COL_NUM && itr.hasNext(); j++) {
+                if(j == 0 && table.getItemCount() == 1 ){
+                } else {
+                    File file = itr.next();
+                    if(file.isDirectory()){
+                        item.setImage(j, dirImage);
+
+                    } else{
+                        item.setImage(j, fileImage);
+                    }
+                    item.setText(j, file.getName());
+                    item.setData(file.getName(), file.getAbsolutePath());
+                }
+            }
+            item = new TableItem(table, SWT.NONE);
         }
         for (int i = 0; i < table.getColumnCount(); i++) {
             table.getColumn(i).pack();
         }
-        table.setLinesVisible(true);
-        table.setVisible(true);
+        table.setLinesVisible(false);
         table.pack();
     }
 
     private void initImages() {
-        dirImage = new Image(group.getDisplay(),
+        dirImage = new Image(table.getDisplay(),
                 this.getClass().getClassLoader().getResourceAsStream("img/" + dirImageName));
-        fileImage = new Image(group.getDisplay(),
+        fileImage = new Image(table.getDisplay(),
                 this.getClass().getClassLoader().getResourceAsStream("img/" + fileImageName));
+        lvlUpImage = new Image(table.getDisplay(),
+                this.getClass().getClassLoader().getResourceAsStream("img/" + lvlUpImageName));
+
     }
 
     public void changeDirectory(String path) {
-
+        currentDir = path;
+        updateContent();
     }
 
-    public Group getGroup() {
-        return group;
+    @Override
+    public void changeExtention(String filter) {
+        currentExtension = filter;
+        updateContent();
+    }
+
+    public Control getControl() {
+        return table;
     }
 }

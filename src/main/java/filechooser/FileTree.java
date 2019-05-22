@@ -1,5 +1,6 @@
 package filechooser;
 
+import filechooser.viewmode.ViewMode;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
@@ -8,8 +9,11 @@ import java.io.File;
 
 public class FileTree  implements ViewMode {
     Tree directoryTree;
+    String currentPath;
+    Controller controller;
 
-    public FileTree(Shell shell) {
+    public FileTree(Shell shell, Controller controller) {
+        this.controller = controller;
         directoryTree = new Tree(shell, SWT.SINGLE | SWT.H_SCROLL | SWT.V_SCROLL | SWT.BORDER);
         initDirectoryTree();
     }
@@ -70,12 +74,16 @@ public class FileTree  implements ViewMode {
             public void handleEvent(Event event) {
                 TreeItem item  = (TreeItem) event.item;
                 String path  = (String) item.getData();
-                changeDirectory(path);
+                controller.updatePath(path);
             }
         });
     }
 
     public void changeDirectory(String path) {
+    }
+
+    @Override
+    public void changeExtention(String filter) {
 
     }
 }

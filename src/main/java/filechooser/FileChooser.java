@@ -1,25 +1,30 @@
 package filechooser;
 
+import filechooser.viewmode.TextView;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.*;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
 
 import java.io.File;
+import java.io.IOException;
 
 
 public class FileChooser {
+    private Shell parent;
     private Shell shell;
     private final String SAVE_TITLE = "Save file";
     private final String OPEN_TITLE = "Open file";
+    private int mode;
 
-    private String[] filterNames = new String[0];
-    private String[] filterExtensions = new String[0];
-    private String[] filesNames = new String[0];
+    private String[] filterNames = {"Все файлы"};
+    private String[] filterExtensions = {""};
 
 
     private String currentDirectoryPath;
     private String homeDirectoryPath = "C:\\";
+
 
     private Combo diskCombo;
     private Combo extensionsCombo;
@@ -28,14 +33,102 @@ public class FileChooser {
     private Text fileName;
     private Button submitButton;
     private FileArea mainArea;
+    private Controller controller;
 
 
     public FileChooser(Shell parent, int mode) {
+        this.parent = parent;
         currentDirectoryPath = homeDirectoryPath;
+    }
+
+    private void initSubmitButton() {
+        submitButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseDown(MouseEvent e) {
+                String name = fileName.getText();
+                String dir = controller.getCurrentDir();
+                if(name.isEmpty()){
+                    MessageBox msg = new MessageBox(shell, SWT.ICON_ERROR);
+                    msg.setMessage("Enter file name");
+                    msg.open();
+                    return;
+                }
+                String ext = (String) extensionsCombo.getData(extensionsCombo.getItem(extensionsCombo.getSelectionIndex()));
+                String fullPath = dir + name + ext;
+                if(mode == SWT.OPEN && !(new File(fullPath).exists())){
+                    MessageBox msg = new MessageBox(shell, SWT.ICON_ERROR);
+                    msg.setMessage("File doesn't exist");
+                    msg.open();
+                    return;
+                }
+                File file = new File(fullPath);
+                if(!file.exists()){
+                    try {
+                        file.createNewFile();
+                    } catch (IOException e1) {
+                        MessageBox msg = new MessageBox(shell, SWT.ICON_ERROR);
+                        msg.setMessage("Error until file creating");
+                        msg.open();
+                    }
+                }
+                controller.selectFile(fullPath);
+            }
+        });
+    }
+
+    private void initExtensionsCombo() {
+        extensionsCombo.removeAll();
+        for (int i = 0; i < filterExtensions.length; i++) {
+            extensionsCombo.add(filterNames[i]);
+            extensionsCombo.setData(filterNames[i], filterExtensions[i]);
+        }
+        extensionsCombo.select(0);
+        extensionsCombo.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseDown(MouseEvent e) {
+                extensionsCombo.forceFocus();
+            }
+        });
+        extensionsCombo.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+               int index = extensionsCombo.getSelectionIndex();
+               String ext = filterExtensions[index];
+               controller.changeExtension(ext);
+            }
+        });
+    }
+
+    private void initDiskCombo() {
+        File[] logicDisks = File.listRoots();
+        for (int i = 0; i < logicDisks.length; i++) {
+            diskCombo.add(logicDisks[i].getPath());
+        }
+        diskCombo.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseDown(MouseEvent e) {
+                diskCombo.forceFocus();
+            }
+        });
+        diskCombo.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                int index = diskCombo.getSelectionIndex();
+                String path = diskCombo.getItem(index);
+                controller.updatePath(path);
+            }
+        });
+        diskCombo.pack();
+    }
+
+    public String open() {
         shell = new Shell(parent);
+
+        controller = new Controller(currentDirectoryPath, filterExtensions[0], shell);
+        this.mode = mode;
         switch (mode) {
             case SWT.SAVE:
-                shell.setText(OPEN_TITLE);
+                shell.setText(SAVE_TITLE);
                 break;
             case SWT.OPEN:
                 shell.setText(OPEN_TITLE);
@@ -49,20 +142,24 @@ public class FileChooser {
 
         shell.setLayout(gridLayout);
 
-        diskCombo = new Combo(shell, SWT.DROP_DOWN);
+        diskCombo = new Combo(shell,SWT.DROP_DOWN | SWT.READ_ONLY);
         initDiskCombo();
 
-        GridData emptySpaceGridData = new GridData();
-        emptySpaceGridData.horizontalSpan = 3;
-        Text empty = new Text(shell, SWT.READ_ONLY);
-        empty.setLayoutData(emptySpaceGridData);
+        GridData openDirTextGridData = new GridData();
+        openDirTextGridData.horizontalSpan = 3;
+        openDirTextGridData.widthHint = 1000;
+        TextView openDir = new TextView(shell, controller);
+        openDir.setLayoutData(openDirTextGridData);
+        controller.addView(openDir);
 
         GridData treeGridData = new GridData();
         treeGridData.horizontalAlignment = GridData.FILL;
         treeGridData.heightHint = 500;
+        treeGridData.widthHint = 300;
         treeGridData.grabExcessVerticalSpace = true;
         treeGridData.grabExcessHorizontalSpace = true;
-        fileTree = new FileTree(shell);
+        fileTree = new FileTree(shell, controller);
+        controller.addView(fileTree);
         fileTree.setLayoutData(treeGridData);
 
 
@@ -73,36 +170,51 @@ public class FileChooser {
         mainGroupGridData.grabExcessHorizontalSpace = true;
         mainGroupGridData.grabExcessVerticalSpace = true;
 
-        mainArea = new FileArea(shell, currentDirectoryPath);
+        mainArea = new FileArea(shell, controller);
         mainArea.setLayoutData(mainGroupGridData);
 
         toHomeButton = new Button(shell, SWT.PUSH);
         toHomeButton.setText("to home directory");
+        toHomeButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseDown(MouseEvent e) {
+                controller.updatePath(homeDirectoryPath);
+            }
+        });
 
-        fileName = new Text(shell, SWT.SINGLE | SWT.BORDER);
+        fileName = new Text(shell, SWT.BORDER);
+        fileName.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseDoubleClick(MouseEvent e) {
+                fileName.forceFocus();
+            }
+        });
         GridData fileNameGridData = new GridData();
         fileNameGridData.horizontalSpan = 2;
         fileNameGridData.widthHint = 600;
         fileName.setLayoutData(fileNameGridData);
 
-        extensionsCombo = new Combo(shell, SWT.DROP_DOWN);
+        extensionsCombo = new Combo(shell, SWT.DROP_DOWN | SWT.READ_ONLY);
+        initExtensionsCombo();
 
-        new Label(shell, SWT.NONE).setLayoutData(emptySpaceGridData);
+        GridData emptyLabel = new GridData();
+        emptyLabel.horizontalSpan = 3;
+        new Label(shell, SWT.NONE).setLayoutData(emptyLabel);
 
         submitButton = new Button(shell, SWT.PUSH);
         submitButton.setText("Выбрать");
-    }
+        initSubmitButton();
+        shell.pack();
+        while (!shell.isDisposed()){
+            shell.pack();
+            shell.open();
 
-    private void initDiskCombo() {
-        File[] logicDisks = File.listRoots();
-        for (int i = 0; i < logicDisks.length; i++) {
-            diskCombo.add(logicDisks[i].getPath());
+            Display display = Display.getCurrent();
+            if(!display.readAndDispatch())
+                display.sleep();
         }
-    }
-
-    public String open() {
-        shell.open();
-        return "";
+        String path = controller.getSelectedFilePath();
+        return path;
     }
 
     public String[] getFilterExtensions() {
@@ -111,14 +223,11 @@ public class FileChooser {
 
     public void setFilterExtensions(String[] filterExtensions) {
         this.filterExtensions = filterExtensions;
-    }
 
-    public String[] getFilesNames() {
-        return filesNames;
     }
+    public  void  setFilterNames(String[] filterNames){
+        this.filterNames = filterNames;
 
-    public void setFilesNames(String[] filesNames) {
-        this.filesNames = filesNames;
     }
 
     public String getCurrentDirectoryPath() {
